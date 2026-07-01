@@ -130,12 +130,10 @@ app.post('/api/process', async (req, res) => {
   }
 });
 
-// --- Endpoint 2: Process from uploaded file ---
-// Use this when you have the video file locally (e.g. googlevideo URLs that are IP-locked)
-// In n8n: HTTP Request node with multipart/form-data
-app.post('/api/process-upload', express.raw({ type: '*/*', limit: '500mb' }), async (req, res) => {
+// --- Endpoint 2: Process from uploaded file (streaming to disk, no memory limit) ---
+app.post('/api/process-upload', async (req, res) => {
   const jobId = uuidv4().slice(0, 8);
-  console.log(`\n[Job ${jobId}] Started (Upload mode, size: ${(req.body.length / (1024 * 1024)).toFixed(1)}MB)`);
+  console.log(`\n[Job ${jobId}] Started (Upload streaming mode)`);
 
   try {
     const startTime = req.headers['x-start-time'] || req.query.startTime;
@@ -153,9 +151,19 @@ app.post('/api/process-upload', express.raw({ type: '*/*', limit: '500mb' }), as
     const jobDir = path.join(TMP_DIR, jobId);
     await fs.mkdir(jobDir, { recursive: true });
 
+    // Stream request body directly to disk (uses almost no RAM)
     const videoPath = path.join(jobDir, 'source.mp4');
-    await fs.writeFile(videoPath, req.body);
-    console.log(`[Job ${jobId}] File saved: ${videoPath}`);
+    const writeStream = fsSync.createWriteStream(videoPath);
+
+    await new Promise((resolve, reject) => {
+      req.pipe(writeStream);
+      writeStream.on('finish', () => {
+        console.log(`[Job ${jobId}] File saved: ${videoPath}`);
+        resolve();
+      });
+      writeStream.on('error', reject);
+      req.on('error', reject);
+    });
 
     await handleProcess(jobId, videoPath, startTime, endTime, mode, crf, preset, res);
 
