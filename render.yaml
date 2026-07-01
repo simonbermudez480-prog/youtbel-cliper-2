@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: youtube-vertical-clipper
+    env: docker
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: API_KEY
+        sync: false
+      - key: COBALT_URL
+        sync: false
+      - key: COBALT_API_KEY
+        sync: false
+    healthCheck:
+      path: /health
